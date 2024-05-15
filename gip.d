@@ -23,7 +23,7 @@
 import core.stdc.stdlib : exit;
 import std.ascii : isOctalDigit;
 import std.conv : to;
-import std.file : dirEntries, isDir, getSize, SpanMode;
+import std.file : dirEntries, exists, isDir, getSize, SpanMode;
 import std.process : executeShell, spawnShell, wait;
 import std.stdio : writeln;
 import std.string : endsWith, replace, split, startsWith, stripRight;
@@ -73,6 +73,18 @@ void Abort(
 
 // ~~
 
+bool IsFolder(
+    string path
+    )
+{
+writeln( "IsFolder: ", path, " ", path.exists() && path.isDir() );
+    return
+        path.exists()
+        && path.isDir();
+}
+
+// ~~
+
 string GetLogicalFilePath(
     string file_path
     )
@@ -97,7 +109,9 @@ string GetLogicalFilePath(
                  && character_index + 3 < file_path.length
                  && isOctalDigit( file_path[ character_index + 1 ] )
                  && isOctalDigit( file_path[ character_index + 2 ] )
-                 && isOctalDigit( file_path[ character_index + 3 ] ) )
+                 && isOctalDigit( file_path[ character_index + 3 ] )
+                 && ( logical_file_path.endsWith( '/' )
+                      || !logical_file_path.IsFolder() ) )
             {
                 character = to!int( file_path[ character_index + 1 .. character_index + 4 ], 8 );
                 logical_file_path ~= cast( char )character;
@@ -188,20 +202,20 @@ string[] GetCommitFileStatusArray(
              && commit_file_status[ 2 ] == ' ' )
         {
             commit_file_prefix = commit_file_status[ 0 .. 3 ];
-            commit_file_path = commit_file_status[ 3 .. $ ];
+            commit_file_path = commit_file_status[ 3 .. $ ].GetLogicalFilePath();
 
             if ( commit_file_prefix[ 1 ] == 'D' )
             {
-                writeln( "Removed : ", commit_file_path.GetLogicalFilePath() );
+                writeln( "Removed : ", commit_file_path );
                 commit_file_status_array ~= commit_file_prefix ~ commit_file_path;
             }
             else
             {
-                if ( commit_file_path.GetLogicalFilePath().isDir() )
+                if ( commit_file_path.IsFolder() )
                 {
-                    writeln( "Updated : ", commit_file_path.GetLogicalFilePath() );
+                    writeln( "Updated : ", commit_file_path );
 
-                    foreach ( folder_entry; dirEntries( commit_file_path.GetLogicalFilePath(), SpanMode.depth ) )
+                    foreach ( folder_entry; dirEntries( commit_file_path, SpanMode.depth ) )
                     {
                         if ( !folder_entry.isDir )
                         {
@@ -212,7 +226,7 @@ string[] GetCommitFileStatusArray(
                 }
                 else
                 {
-                    writeln( "Updated : ", commit_file_path.GetLogicalFilePath() );
+                    writeln( "Updated : ", commit_file_path );
                     commit_file_status_array ~= commit_file_prefix ~ commit_file_path;
                 }
             }
@@ -261,32 +275,35 @@ void ProcessFiles(
         commit_byte_count,
         commit_file_byte_count;
 
+    RunCommand( "git reset" );
+
     commit_file_status_array = GetCommitFileStatusArray();
     commit_byte_count = 0;
 
     foreach ( commit_file_status; commit_file_status_array )
     {
         commit_file_prefix = commit_file_status[ 0 .. 3 ];
-        commit_file_path = commit_file_status[ 3 .. $ ];
+        commit_file_path = commit_file_status[ 3 .. $ ].GetLogicalFilePath();
 
         if ( commit_file_prefix[ 1 ] == 'D'
-             || commit_file_path.GetLogicalFilePath().isDir() )
+             || commit_file_path.isDir() )
         {
             commit_file_byte_count = 0;
         }
         else
         {
-            commit_file_byte_count = commit_file_path.GetLogicalFilePath().getSize();
+            commit_file_byte_count = commit_file_path.getSize();
         }
 
         if ( commit_byte_count + commit_file_byte_count > maximum_commit_byte_count )
         {
             RunCommand( "git commit -m " ~ commit_message.GetQuotedText() );
             RunCommand( "git push origin " ~ branch_name );
+            RunCommand( "git reset" );
             commit_byte_count = 0;
         }
 
-        RunCommand( "git add " ~ commit_file_path.GetLogicalFilePath().GetQuotedFilePath() );
+        RunCommand( "git add " ~ commit_file_path.GetQuotedFilePath() );
         commit_byte_count += commit_file_byte_count;
     }
 
@@ -294,6 +311,7 @@ void ProcessFiles(
     {
         RunCommand( "git commit -m " ~ commit_message.GetQuotedText() );
         RunCommand( "git push origin " ~ branch_name );
+        RunCommand( "git reset" );
     }
 }
 
