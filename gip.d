@@ -77,7 +77,6 @@ bool IsFolder(
     string path
     )
 {
-writeln( "IsFolder: ", path, " ", path.exists() && path.isDir() );
     return
         path.exists()
         && path.isDir();
